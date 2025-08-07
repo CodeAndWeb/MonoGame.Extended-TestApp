@@ -4,6 +4,7 @@ using MonoGame.Extended;
 using MonoGame.Extended.Animations;
 using MonoGame.Extended.Graphics;
 using System;
+using System.Diagnostics;
 
 
 /// <summary>
@@ -17,6 +18,7 @@ public class TestApp : Game
     // Sprite sheet assets
     private Texture2DAtlas _spriteAtlas;
     private SpriteSheet _characterSpriteSheet;
+    private Sprite _capguy, _capguyRotated;
     private AnimatedSprite _walkAnimation;
     private AnimatedSprite _rotatingArrowAnimation;
 
@@ -24,8 +26,8 @@ public class TestApp : Game
     private NinePatch _leftRightTopNinePatch;
 
     // Display properties
-    private Vector2 _spritePosition;
     private float _angle = 0f;
+    private int _walkPositionX = 0;
 
     public TestApp()
     {
@@ -34,17 +36,12 @@ public class TestApp : Game
         IsMouseVisible = true;
 
         // Set window properties
-        _graphics.PreferredBackBufferWidth = 1024;
-        _graphics.PreferredBackBufferHeight = 768;
+        _graphics.PreferredBackBufferWidth = 1600;
+        _graphics.PreferredBackBufferHeight = 800;
     }
 
     protected override void Initialize()
     {
-        // Center the sprite on screen
-        _spritePosition = new Vector2(
-            _graphics.PreferredBackBufferWidth / 2f,
-            _graphics.PreferredBackBufferHeight / 2f);
-
         base.Initialize();
     }
 
@@ -54,6 +51,11 @@ public class TestApp : Game
 
         // Load sprite atlas from Content Pipeline
         _spriteAtlas = Content.Load<Texture2DAtlas>("spritesheet");
+
+        _capguy = _spriteAtlas.CreateSprite("walk/0001");
+        _capguyRotated = _spriteAtlas.CreateSprite("walk/0003");
+        Debug.WriteLineIf(_capguy.TextureRegion.IsRotated, "walk/0001 shouldn't be rotated on sheet!");
+        Debug.WriteLineIf(!_capguyRotated.TextureRegion.IsRotated, "walk/0003 should be rotated on sheet!");
 
         _characterSpriteSheet = new SpriteSheet("character", _spriteAtlas);
 
@@ -80,12 +82,16 @@ public class TestApp : Game
         // Create NinePatch from left-right-top sprite
         var leftRightTopRegion = _spriteAtlas.GetRegion("left-right-top");
         _leftRightTopNinePatch = leftRightTopRegion.CreateNinePatch(25, 25, 25, 5);
+        Debug.WriteLineIf(!leftRightTopRegion.IsRotated, "left-right-top should be rotated on sheet!");
     }
 
     protected override void Update(GameTime gameTime)
     {
         _walkAnimation.Update(gameTime);
+        _walkPositionX = (_walkPositionX + 1) % 300;
         _rotatingArrowAnimation.Update(gameTime);
+        _angle += (float)Math.PI / 300;
+
         base.Update(gameTime);
     }
 
@@ -97,19 +103,31 @@ public class TestApp : Game
 
         // Draw the walking animation in the top-left area
         var scale = new Vector2(0.8f, 1.2f);
-        var walkPosition = new Vector2(200, 400);
-        _spriteBatch.Draw(_walkAnimation, walkPosition, 0, scale);
+        var walkPosition = new Vector2(100 + _walkPositionX, 400);
+        var clippingRect = new Rectangle(150, 0, 200, 400);
+        DrawClippedSprite(_walkAnimation, walkPosition, 0, scale, clippingRect);
+        _spriteBatch.DrawRectangle(clippingRect, Color.Gray);
         _spriteBatch.DrawRectangle(_walkAnimation.GetBoundingRectangle(new Transform2(walkPosition, 0, scale)), Color.Yellow);
         _spriteBatch.DrawCircle(new CircleF(walkPosition, 10), 12, Color.Red, 2);
 
-        _angle += (float)Math.PI / 300;
+        // rotating arrow
         var arrowPosition = new Vector2(200, 580);
         _spriteBatch.Draw(_rotatingArrowAnimation, arrowPosition, _angle);
         _spriteBatch.DrawRectangle(_rotatingArrowAnimation.GetBoundingRectangle(new Transform2(arrowPosition, _angle)), Color.Yellow);
         _spriteBatch.DrawCircle(new CircleF(arrowPosition, 10), 12, Color.Red, 2);
 
+        // arrow with clipping
+        arrowPosition = new Vector2(460, 580);
+        clippingRect = new Rectangle(440, 585, 40, 60);
+        DrawClippedSprite(_rotatingArrowAnimation, arrowPosition, _angle, Vector2.One, clippingRect);
+        _spriteBatch.DrawRectangle(clippingRect, Color.Green);
+        _spriteBatch.DrawCircle(new CircleF(arrowPosition, 10), 12, Color.Red, 2);
+
         // Draw the NinePatch in six configurations as requested
         DrawNinePatchVariants(_spriteBatch, _leftRightTopNinePatch, 550, 30);
+
+        DrawFlippedSprites(_capguy, 30);
+        DrawFlippedSprites(_capguyRotated, 250);
 
         _spriteBatch.End();
 
@@ -139,7 +157,7 @@ public class TestApp : Game
         y += 250;
 
         // 2. Unscaled, clipRect = bottom right quarter
-        var clipRectBottomRight = new Rectangle(x+50, y+50, 50, 50);
+        var clipRectBottomRight = new Rectangle(x + 50, y + 50, 50, 50);
         var destRect2 = new Rectangle(x, y, nativeWidth, nativeHeight);
         spriteBatch.Draw(ninePatch, destRect2, Color.White, clipRectBottomRight);
         y += 250;
@@ -158,12 +176,12 @@ public class TestApp : Game
 
         // 5. Scaled x2/x3, clipRect = bottom right quarter
         var destRect5 = new Rectangle(x, y, 300, 200);
-        spriteBatch.Draw(ninePatch, destRect5, Color.White, new Rectangle(x+150, y+100, 150, 100));
+        spriteBatch.Draw(ninePatch, destRect5, Color.White, new Rectangle(x + 150, y + 100, 150, 100));
         y += 250;
 
         // 6. Scaled x2/x3, clipRect = top transparent pixels
         var destRect6 = new Rectangle(x, y, nativeWidth * 3, nativeHeight * 2);
-        spriteBatch.Draw(ninePatch, destRect6, Color.White,  new Rectangle(x, y, 300, 15));
+        spriteBatch.Draw(ninePatch, destRect6, Color.White, new Rectangle(x, y, 300, 15));
 
         // Draw rectangles around the NinePatches to show their bounds
         spriteBatch.DrawRectangle(destRect1, Color.Red, 2);
@@ -173,5 +191,31 @@ public class TestApp : Game
         spriteBatch.DrawRectangle(destRect5, Color.Orange, 2);
         spriteBatch.DrawRectangle(destRect6, Color.Purple, 2);
     }
-}
 
+    private void DrawClippedSprite(Sprite sprite, Vector2 pos, float angle, Vector2 scale, Rectangle clippingRect)
+    {
+        _spriteBatch.Draw(sprite.TextureRegion, pos, Color.White, angle, sprite.Origin, scale, SpriteEffects.None, 1, clippingRect);
+    }
+
+    private void DrawFlippedSprites(Sprite sprite, int yPos)
+    {
+        Vector2 scale = new Vector2(0.5f, 0.5f);
+        Vector2 pos = new Vector2(1100, yPos);
+        float angle = 0f;
+
+        _spriteBatch.DrawCircle(new CircleF(pos, 5), 8, Color.Red);
+        _spriteBatch.Draw(sprite.TextureRegion, pos, Color.White, angle, Vector2.Zero, scale, SpriteEffects.None, 1);
+
+        pos.X += 100;
+        _spriteBatch.DrawCircle(new CircleF(pos, 5), 8, Color.Red);
+        _spriteBatch.Draw(sprite.TextureRegion, pos, Color.White, angle, Vector2.Zero, scale, SpriteEffects.FlipHorizontally, 1);
+
+        pos.X += 100;
+        _spriteBatch.DrawCircle(new CircleF(pos, 5), 8, Color.Red);
+        _spriteBatch.Draw(sprite.TextureRegion, pos, Color.White, angle, Vector2.Zero, scale, SpriteEffects.FlipVertically, 1);
+
+        pos.X += 100;
+        _spriteBatch.DrawCircle(new CircleF(pos, 5), 8, Color.Red);
+        _spriteBatch.Draw(sprite.TextureRegion, pos, Color.White, angle, Vector2.Zero, scale, SpriteEffects.FlipHorizontally | SpriteEffects.FlipVertically, 1);
+    }
+} 
